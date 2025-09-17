@@ -23,7 +23,6 @@ export class SocketHandler {
 
   private log(level: 'info' | 'warn' | 'error', message: string, context: LogContext): void {
     const logEntry = {
-      timestamp: new Date().toISOString(),
       level: level.toUpperCase(),
       component: SocketHandler.COMPONENT,
       message,
