@@ -247,7 +247,16 @@ export class SocketHandler {
 
   private handleMessage(socket: Socket, data: any): void {
     const user = this.connectedUsers.get(socket.id);
+    console.log(`📨 [MESSAGE-HANDLER] Received message from user: "${user}", socketId: ${socket.id}`);
+    console.log(`📨 [MESSAGE-HANDLER] Message data:`, {
+      type: data?.type,
+      contentLength: data?.content?.length,
+      seenOnce: data?.seenOnce,
+      disappearingPhoto: data?.disappearingPhoto
+    });
+    
     if (!user) {
+      console.log(`❌ [MESSAGE-HANDLER] User not authenticated`);
       socket.emit('error', { message: 'Not authenticated' });
       return;
     }
@@ -257,6 +266,7 @@ export class SocketHandler {
       const { type, content, seenOnce = false, disappearingPhoto = false, replyTo, duration } = data;
       
       if (!type || !content) {
+        console.log(`❌ [MESSAGE-HANDLER] Invalid message data - type: ${type}, content length: ${content?.length}`);
         socket.emit('message-error', { error: 'Invalid message data' });
         return;
       }
@@ -289,14 +299,17 @@ export class SocketHandler {
 
       // Add to store
       const savedMessage = this.messageStore.addMessage(message);
+      console.log(`💾 [MESSAGE-HANDLER] Message saved with ID: ${savedMessage.id}`);
 
       // Send acknowledgment to sender
       socket.emit('message-ack', { messageId: savedMessage.id });
+      console.log(`✅ [MESSAGE-HANDLER] Acknowledgment sent to sender`);
 
       // Broadcast to all users in room
       this.io.to('chat-room').emit('new-message', savedMessage);
+      console.log(`📡 [MESSAGE-HANDLER] Message broadcasted to chat-room`);
 
-      console.log(`💬 Message from ${user}: ${type}`);
+      console.log(`💬 Message from ${user}: ${type} (${type === 'image' ? 'image data length: ' + content.length : content})`);
     } catch (error) {
       socket.emit('message-error', { error: 'Failed to send message' });
     }
