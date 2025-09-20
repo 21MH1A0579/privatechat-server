@@ -98,4 +98,5 @@ server.listen(PORT, () => {
   const protocol = USE_HTTPS ? 'https' : 'http';
   console.log(`🚀 Server running on ${protocol}://localhost:${PORT}`);
   console.log(`📱 Client should connect to: ${protocol}://localhost:5173`);
+  console.log(`🔧 Server Version: IMMEDIATE-FIX-v1.0 - ${new Date().toISOString()}`);
 });
