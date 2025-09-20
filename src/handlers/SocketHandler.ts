@@ -272,12 +272,17 @@ export class SocketHandler {
       }
 
       if (type === 'image') {
-        // Validate image size (3MB limit)
+        // Validate image size (1.5MB limit for Socket.IO stability)
         const sizeInBytes = (content.length * 3) / 4; // Rough base64 size calculation
-        if (sizeInBytes > 3 * 1024 * 1024) {
-          socket.emit('message-error', { error: 'Image too large (max 3MB)' });
+        const sizeInMB = sizeInBytes / (1024 * 1024);
+        console.log(`📸 [MESSAGE-HANDLER] Image size: ${sizeInMB.toFixed(2)}MB`);
+        
+        if (sizeInBytes > 1.5 * 1024 * 1024) {
+          console.log(`❌ [MESSAGE-HANDLER] Image too large: ${sizeInMB.toFixed(2)}MB`);
+          socket.emit('message-error', { error: `Image too large (${sizeInMB.toFixed(2)}MB). Max 1.5MB allowed.` });
           return;
         }
+        console.log(`✅ [MESSAGE-HANDLER] Image size acceptable: ${sizeInMB.toFixed(2)}MB`);
       }
 
       // Sanitize text content
@@ -320,13 +325,20 @@ export class SocketHandler {
     if (!user) return;
 
     const { messageId } = data;
-    const removed = this.messageStore.removeSeenOnceMessage(messageId);
+    console.log(`👁️ [SEEN-ONCE] User "${user}" viewed seen-once message: ${messageId}`);
     
-    if (removed) {
-      // Notify all clients to remove the message
-      this.io.to('chat-room').emit('message-removed', { messageId });
-      console.log(`👁️ Seen-once message ${messageId} viewed and removed`);
-    }
+    // First, trigger disappearing animation on all clients
+    this.io.to('chat-room').emit('message-disappearing', { messageId, type: 'seen-once' });
+    console.log(`👁️ [SEEN-ONCE] Triggered disappearing animation for all clients`);
+    
+    // Then remove the message after animation completes (500ms animation + small buffer)
+    setTimeout(() => {
+      const removed = this.messageStore.removeSeenOnceMessage(messageId);
+      if (removed) {
+        this.io.to('chat-room').emit('message-removed', { messageId });
+        console.log(`👁️ [SEEN-ONCE] Message ${messageId} removed after animation`);
+      }
+    }, 600);
   }
 
 
@@ -335,12 +347,29 @@ export class SocketHandler {
     if (!user) return;
 
     const { messageId } = data;
+    console.log(`👁️ [PHOTO-VIEWED] User "${user}" viewed disappearing photo: ${messageId}`);
+    
     const marked = this.messageStore.markPhotoViewed(messageId);
     
     if (marked) {
-      // Notify all clients that photo was viewed (starts 30-second countdown)
+      // Notify all clients that photo was viewed (sender gets eye icon update)
       this.io.to('chat-room').emit('photo-viewed', { messageId });
-      console.log(`📸 Disappearing photo ${messageId} viewed by ${user} - will disappear in 30 seconds`);
+      console.log(`👁️ [PHOTO-VIEWED] Notified all clients that photo ${messageId} was viewed by ${user}`);
+      
+      // Start 5-second timer, then trigger disappearing animation
+      setTimeout(() => {
+        console.log(`👁️ [PHOTO-VIEWED] 5 seconds elapsed, triggering disappearing animation for ${messageId}`);
+        this.io.to('chat-room').emit('message-disappearing', { messageId, type: 'disappearing-photo' });
+        
+        // Remove the photo after animation completes
+        setTimeout(() => {
+          const removed = this.messageStore.removeDisappearingPhoto(messageId);
+          if (removed) {
+            this.io.to('chat-room').emit('message-removed', { messageId });
+            console.log(`👁️ [PHOTO-VIEWED] Photo ${messageId} removed after animation`);
+          }
+        }, 600);
+      }, 5000);
     }
   }
 
@@ -359,7 +388,17 @@ export class SocketHandler {
 
   private handleCallStart(socket: Socket, data: any): void {
     const user = this.connectedUsers.get(socket.id);
+    console.log(`📞 [CALL-START] User "${user}" starting ${data.type} call`);
+    
+    if (!user) {
+      console.error(`❌ [CALL-START] User not authenticated`);
+      socket.emit('error', { message: 'Not authenticated' });
+      return;
+    }
+    
+    console.log(`📞 [CALL-START] Broadcasting call-start to other users in room`);
     socket.to('chat-room').emit('call-start', { ...data, from: user });
+    console.log(`📞 [CALL-START] Call-start event broadcasted`);
   }
 
   private handleMessageReaction(socket: Socket, data: { messageId: string; emoji: string }): void {
